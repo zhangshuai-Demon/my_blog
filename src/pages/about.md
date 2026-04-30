@@ -1,7 +1,7 @@
 ---
 title: 关于
 prerender: true
-layout: ../../layouts/BaseLayout.astro
+layout: ../layouts/BaseLayout.astro
 ---
 
 ## 关于我
