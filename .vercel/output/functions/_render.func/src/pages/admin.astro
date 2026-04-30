@@ -1,0 +1,664 @@
+---
+export const prerender = false;
+
+// 简单的密码保护：检查 URL 参数或环境变量
+const adminPassword = import.meta.env.ADMIN_PASSWORD || 'admin';
+const allowed = Astro.url.searchParams.get('key') === adminPassword;
+
+if (!allowed) {
+  return new Response(
+    `<!DOCTYPE html>
+    <html lang="zh-CN">
+    <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>管理后台 - 验证</title>
+    <style>
+      * { margin:0; padding:0; box-sizing:border-box; }
+      body { display:flex; align-items:center; justify-content:center; min-height:100vh;
+             background:#0f172a; color:#f1f5f9; font-family:system-ui,sans-serif; }
+      form { background:#1e293b; padding:2rem; border-radius:0.75rem; border:1px solid #334155;
+             display:flex; flex-direction:column; gap:1rem; min-width:300px; }
+      input { padding:0.75rem; border:1px solid #334155; border-radius:0.5rem;
+              background:#0f172a; color:#f1f5f9; font-size:1rem; }
+      button { padding:0.75rem; background:#2563eb; color:white; border:none; border-radius:0.5rem;
+               font-size:1rem; cursor:pointer; }
+      h1 { font-size:1.25rem; text-align:center; }
+    </style></head>
+    <body>
+      <form method="get">
+        <h1>管理后台</h1>
+        <input type="password" name="key" placeholder="请输入访问密码" autofocus />
+        <button type="submit">进入</button>
+      </form>
+    </body></html>`,
+    { status: 200, headers: { 'Content-Type': 'text/html' } }
+  );
+}
+---
+
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>管理后台 - My Blog</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #ffffff;
+      --bg2: #f9fafb;
+      --bg3: #f3f4f6;
+      --text: #111827;
+      --text2: #6b7280;
+      --accent: #2563eb;
+      --border: #e5e7eb;
+      --danger: #ef4444;
+      --success: #22c55e;
+      --warning: #f59e0b;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f172a;
+        --bg2: #1e293b;
+        --bg3: #334155;
+        --text: #f1f5f9;
+        --text2: #94a3b8;
+        --accent: #3b82f6;
+        --border: #334155;
+      }
+    }
+
+    body {
+      font-family: 'Noto Sans SC', 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ── 侧边栏 ── */
+    aside {
+      width: 260px;
+      min-width: 260px;
+      background: var(--bg2);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    aside .aside-header {
+      padding: 1rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    aside .aside-header h2 { font-size: 1rem; }
+
+    aside .post-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.5rem;
+    }
+
+    aside .post-list .post-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.6rem 0.75rem;
+      border-radius: 0.5rem;
+      cursor: pointer;
+      font-size: 0.875rem;
+      transition: background 0.15s;
+      margin-bottom: 2px;
+    }
+
+    aside .post-list .post-item:hover { background: var(--bg3); }
+    aside .post-list .post-item.active { background: var(--accent); color: white; }
+    aside .post-list .post-item.draft { opacity: 0.6; }
+    aside .post-list .post-item .del-btn {
+      display: none;
+      background: none;
+      border: none;
+      color: inherit;
+      opacity: 0.5;
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 0 0.25rem;
+    }
+    aside .post-list .post-item:hover .del-btn { display: block; }
+    aside .post-list .post-item .del-btn:hover { opacity: 1; color: var(--danger); }
+
+    /* ── 主编辑区 ── */
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* 工具栏 */
+    .toolbar {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-shrink: 0;
+    }
+
+    .toolbar .save-status {
+      font-size: 0.8rem;
+      color: var(--text2);
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    .toolbar .save-status.saving { color: var(--warning); }
+    .toolbar .save-status.saved { color: var(--success); }
+    .toolbar .save-status.error { color: var(--danger); }
+
+    .toolbar .view-link {
+      font-size: 0.8rem;
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    /* 元数据区 */
+    .meta-bar {
+      display: grid;
+      grid-template-columns: 1fr 140px 1fr;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+      flex-shrink: 0;
+    }
+
+    .meta-bar input,
+    .meta-bar select {
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 0.875rem;
+      font-family: inherit;
+    }
+
+    .meta-bar input:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+    .meta-bar .slug-row {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      color: var(--text2);
+    }
+
+    .meta-bar .slug-row input {
+      flex: 1;
+      font-size: 0.8rem;
+    }
+
+    /* 编辑器主体 */
+    .editor-body {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    .editor-pane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+    }
+
+    .editor-pane .pane-header {
+      padding: 0.4rem 1rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text2);
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .editor-pane textarea {
+      flex: 1;
+      padding: 1rem;
+      border: none;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Fira Code', 'JetBrains Mono', Consolas, monospace;
+      font-size: 0.875rem;
+      line-height: 1.7;
+      resize: none;
+      outline: none;
+      tab-size: 2;
+    }
+
+    .preview-pane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .preview-pane .pane-header {
+      padding: 0.4rem 1rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text2);
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .preview-pane .preview-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.5rem;
+      max-width: 680px;
+      margin: 0 auto;
+      width: 100%;
+      line-height: 1.75;
+    }
+
+    .preview-content h2 { font-size: 1.5rem; margin: 1.5rem 0 0.75rem; }
+    .preview-content h3 { font-size: 1.2rem; margin: 1.25rem 0 0.5rem; }
+    .preview-content p { margin-bottom: 1rem; }
+    .preview-content code { background: var(--bg3); padding: 0.15em 0.4em; border-radius: 0.25rem; font-size: 0.875em; }
+    .preview-content pre { background: var(--bg3); padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin: 1rem 0; }
+    .preview-content pre code { background: none; padding: 0; }
+    .preview-content blockquote { border-left: 3px solid var(--accent); padding-left: 1rem; color: var(--text2); margin: 1rem 0; }
+    .preview-content img { max-width: 100%; border-radius: 0.5rem; }
+    .preview-content a { color: var(--accent); }
+
+    /* 按钮 */
+    .btn {
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 0.8rem;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s;
+    }
+    .btn:hover { background: var(--bg3); }
+    .btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
+    .btn.danger { color: var(--danger); border-color: var(--danger); }
+
+    /* 空状态 */
+    .empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--text2);
+      gap: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <!-- 侧边栏 -->
+  <aside>
+    <div class="aside-header">
+      <h2>文章列表</h2>
+      <button class="btn primary" id="btn-new">+ 新建</button>
+    </div>
+    <div class="post-list" id="post-list">
+      <!-- 由 JS 动态填充 -->
+    </div>
+  </aside>
+
+  <!-- 主区域 -->
+  <main>
+    <!-- 顶部工具栏 -->
+    <div class="toolbar">
+      <span id="page-title" style="font-weight:600;">新建文章</span>
+      <span class="save-status" id="save-status">
+        <span id="save-icon"></span>
+        <span id="save-text">未修改</span>
+      </span>
+    </div>
+
+    <!-- 元数据 -->
+    <div class="meta-bar">
+      <input type="text" id="field-title" placeholder="文章标题" />
+      <input type="date" id="field-date" />
+      <input type="text" id="field-tags" placeholder="标签, 逗号分隔" />
+      <div class="slug-row">
+        <span>slug:</span>
+        <input type="text" id="field-slug" placeholder="自动生成" />
+        <input type="text" id="field-description" placeholder="文章摘要（可选）" style="flex:2" />
+      </div>
+    </div>
+
+    <!-- 编辑器主体 -->
+    <div class="editor-body">
+      <div class="editor-pane">
+        <div class="pane-header">Markdown 编辑</div>
+        <textarea id="editor" placeholder="在此编写 Markdown 内容..."></textarea>
+      </div>
+      <div class="preview-pane">
+        <div class="pane-header">实时预览</div>
+        <div class="preview-content" id="preview"></div>
+      </div>
+    </div>
+
+    <!-- 底部 -->
+    <div style="padding:0.5rem 1rem;border-top:1px solid var(--border);display:flex;gap:0.5rem;background:var(--bg);flex-shrink:0">
+      <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.8rem;color:var(--text2);cursor:pointer">
+        <input type="checkbox" id="field-draft" /> 草稿（不公开）
+      </label>
+      <button class="btn danger" id="btn-delete" style="margin-left:auto;display:none">删除文章</button>
+    </div>
+  </main>
+
+  <script>
+    // ─── 状态 ───
+    interface PostListItem {
+      slug: string;
+      title: string;
+      description: string;
+      date: string;
+      tags: string[];
+      draft: boolean;
+    }
+
+    interface PostData extends PostListItem {
+      body: string;
+    }
+
+    let posts: PostListItem[] = [];
+    let currentSlug: string | null = null;
+    let isDirty = false;
+    let saveTimer: ReturnType<typeof setTimeout> | null = null;
+    let currentBody = '';
+
+    // ─── DOM 引用 ───
+    const $ = (id: string) => document.getElementById(id)!;
+    const postList = $('post-list');
+    const editor = $('editor') as HTMLTextAreaElement;
+    const preview = $('preview');
+    const fieldTitle = $('field-title') as HTMLInputElement;
+    const fieldDate = $('field-date') as HTMLInputElement;
+    const fieldTags = $('field-tags') as HTMLInputElement;
+    const fieldSlug = $('field-slug') as HTMLInputElement;
+    const fieldDescription = $('field-description') as HTMLInputElement;
+    const fieldDraft = $('field-draft') as HTMLInputElement;
+    const saveStatus = $('save-status');
+    const saveIcon = $('save-icon');
+    const saveText = $('save-text');
+    const pageTitle = $('page-title');
+    const btnDelete = $('btn-delete') as HTMLButtonElement;
+    const btnNew = $('btn-new');
+
+    // ─── 加载文章列表 ───
+    async function loadPostList() {
+      try {
+        const res = await fetch('/api/posts');
+        posts = await res.json();
+        renderPostList();
+      } catch (e) {
+        console.error('加载文章列表失败:', e);
+      }
+    }
+
+    function renderPostList() {
+      postList.innerHTML = posts
+        .map(
+          (p) => `
+          <div class="post-item ${p.draft ? 'draft' : ''} ${p.slug === currentSlug ? 'active' : ''}"
+               data-slug="${p.slug}">
+            <span>${p.draft ? '📝 ' : ''}${p.title || '(无标题)'}</span>
+            <button class="del-btn" data-delete="${p.slug}" title="删除">×</button>
+          </div>
+        `
+        )
+        .join('');
+
+      // 点击事件
+      postList.querySelectorAll('.post-item').forEach((el) => {
+        el.addEventListener('click', (e) => {
+          const target = e.target as HTMLElement;
+          if (target.dataset.delete) {
+            e.stopPropagation();
+            deletePost(target.dataset.delete);
+            return;
+          }
+          const slug = (el as HTMLElement).dataset.slug!;
+          loadPost(slug);
+        });
+      });
+    }
+
+    // ─── 新建文章 ───
+    function newPost() {
+      currentSlug = null;
+      isDirty = false;
+      currentBody = '';
+      editor.value = '';
+      preview.innerHTML = '<p style="color:var(--text2)">预览将在这里显示...</p>';
+      fieldTitle.value = '';
+      fieldDate.value = new Date().toISOString().slice(0, 10);
+      fieldTags.value = '';
+      fieldSlug.value = '';
+      fieldDescription.value = '';
+      fieldDraft.checked = false;
+      pageTitle.textContent = '新建文章';
+      btnDelete.style.display = 'none';
+      updateSlugFromTitle('');
+      setSaveStatus('', '');
+      renderPostList(); // 清除高亮
+    }
+
+    // ─── 加载文章 ───
+    async function loadPost(slug: string) {
+      try {
+        const res = await fetch(`/api/posts/${slug}`);
+        if (!res.ok) throw new Error('Not found');
+        const post: PostData = await res.json();
+
+        currentSlug = slug;
+        isDirty = false;
+        currentBody = post.body;
+        editor.value = post.body;
+        fieldTitle.value = post.title;
+        fieldDate.value = post.date;
+        fieldTags.value = post.tags.join(', ');
+        fieldSlug.value = slug;
+        fieldDescription.value = post.description || '';
+        fieldDraft.checked = post.draft;
+        pageTitle.textContent = post.title || '(无标题)';
+        btnDelete.style.display = 'block';
+        updatePreview();
+        setSaveStatus('', '');
+        renderPostList();
+        editor.focus();
+      } catch (e) {
+        console.error('加载文章失败:', e);
+        alert('加载文章失败');
+      }
+    }
+
+    // ─── 删除文章 ───
+    async function deletePost(slug: string) {
+      if (!confirm(`确定删除「${slug}」？此操作不可撤销。`)) return;
+
+      try {
+        const res = await fetch(`/api/posts/${slug}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Delete failed');
+
+        if (currentSlug === slug) newPost();
+        await loadPostList();
+      } catch (e) {
+        console.error('删除失败:', e);
+        alert('删除失败');
+      }
+    }
+
+    // ─── Slug 自动生成 ───
+    function updateSlugFromTitle(title: string) {
+      if (currentSlug) return; // 已有 slug 的旧文章不自动改
+      const slug = title
+        .toLowerCase()
+        .replace(/[^a-z0-9一-鿿-]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 80);
+      fieldSlug.value = slug;
+    }
+
+    // ─── 保存文章 ───
+    async function save() {
+      const slug = fieldSlug.value.trim() || 'untitled';
+      const title = fieldTitle.value.trim() || '无标题';
+      const date = fieldDate.value || new Date().toISOString().slice(0, 10);
+      const tags = fieldTags.value
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean);
+      const description = fieldDescription.value.trim();
+      const body = editor.value;
+      const draft = fieldDraft.checked;
+
+      setSaveStatus('...', 'saving');
+      try {
+        const res = await fetch('/api/posts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slug, title, date, tags, description, body, draft }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || '保存失败');
+        }
+
+        const result = await res.json();
+        const savedSlug = result.slug;
+
+        // 如果是新文章，更新当前状态
+        if (!currentSlug) {
+          currentSlug = savedSlug;
+          fieldSlug.value = savedSlug;
+          history.replaceState(null, '', `?key=${new URLSearchParams(location.search).get('key')}&edit=${savedSlug}`);
+          btnDelete.style.display = 'block';
+        }
+
+        isDirty = false;
+        currentBody = body;
+        setSaveStatus('✓', 'saved');
+        await loadPostList();
+        renderPostList();
+
+        // 2 秒后恢复状态
+        setTimeout(() => { if (!isDirty) setSaveStatus('', ''); }, 2000);
+      } catch (e) {
+        console.error('保存失败:', e);
+        setSaveStatus('✗', 'error');
+      }
+    }
+
+    // ─── 防抖自动保存 ───
+    function scheduleSave() {
+      isDirty = true;
+      setSaveStatus('...', 'saving');
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => {
+        save();
+      }, 1500);
+    }
+
+    // ─── 保存状态显示 ───
+    function setSaveStatus(icon: string, status: string) {
+      saveIcon.textContent = icon;
+      saveText.textContent =
+        status === 'saving' ? '保存中...' :
+        status === 'saved' ? '已保存' :
+        status === 'error' ? '保存失败' : '';
+      saveStatus.className = 'save-status ' + status;
+    }
+
+    // ─── Markdown 预览 ───
+    function updatePreview() {
+      const md = editor.value;
+      try {
+        if (typeof (window as any).marked !== 'undefined') {
+          preview.innerHTML = (window as any).marked.parse(md);
+        } else {
+          preview.innerHTML = '<p style="color:var(--warning)">Markdown 渲染库加载中...</p>';
+        }
+      } catch {
+        preview.innerHTML = '<p style="color:var(--danger)">渲染错误</p>';
+      }
+    }
+
+    // ─── 事件监听 ───
+    btnNew.addEventListener('click', newPost);
+    btnDelete.addEventListener('click', () => {
+      if (currentSlug) deletePost(currentSlug);
+    });
+
+    editor.addEventListener('input', () => {
+      updatePreview();
+      scheduleSave();
+    });
+
+    fieldTitle.addEventListener('input', () => {
+      updateSlugFromTitle(fieldTitle.value);
+      pageTitle.textContent = fieldTitle.value || '(无标题)';
+      scheduleSave();
+    });
+
+    fieldDate.addEventListener('change', scheduleSave);
+    fieldTags.addEventListener('input', scheduleSave);
+    fieldDescription.addEventListener('input', scheduleSave);
+    fieldDraft.addEventListener('change', scheduleSave);
+
+    // 快捷键 Ctrl+S 立即保存
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        if (saveTimer) clearTimeout(saveTimer);
+        save();
+      }
+    });
+
+    // ─── 初始化 ───
+    async function init() {
+      await loadPostList();
+
+      // 检查 URL 是否有 ?edit=slug 参数
+      const editSlug = new URLSearchParams(location.search).get('edit');
+      if (editSlug && posts.some((p) => p.slug === editSlug)) {
+        loadPost(editSlug);
+      } else if (posts.length > 0) {
+        // 自动打开第一篇（非草稿优先）
+        const first = posts.find((p) => !p.draft) || posts[0];
+        loadPost(first.slug);
+      } else {
+        newPost();
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
