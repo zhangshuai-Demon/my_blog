@@ -1,0 +1,47 @@
+---
+import TagBadge from './TagBadge.astro';
+import type { CollectionEntry } from 'astro:content';
+
+interface Props {
+  post: CollectionEntry<'blog'>;
+}
+
+const { post } = Astro.props;
+const { slug } = post;
+const { title, description, date, tags } = post.data;
+
+const formattedDate = date.toLocaleDateString('zh-CN', {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+});
+---
+
+<article class="py-6 border-b border-[var(--color-border)] last:border-b-0">
+  <time class="text-sm text-[var(--color-text-muted)]" datetime={date.toISOString()}>
+    {formattedDate}
+  </time>
+
+  <h2 class="mt-1 mb-2">
+    <a
+      href={`/blog/${slug}`}
+      class="text-xl font-semibold text-[var(--color-text)] hover:text-[var(--color-accent)] transition-colors"
+    >
+      {title}
+    </a>
+  </h2>
+
+  {description && (
+    <p class="text-[var(--color-text-muted)] text-sm leading-relaxed mb-3 line-clamp-2">
+      {description}
+    </p>
+  )}
+
+  {tags.length > 0 && (
+    <div class="flex flex-wrap gap-1.5">
+      {tags.map((tag) => (
+        <TagBadge tag={tag} href={`/tags/${tag}`} />
+      ))}
+    </div>
+  )}
+</article>

@@ -1,0 +1,45 @@
+---
+export const prerender = true;
+
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getCollection } from 'astro:content';
+
+const allPosts = await getCollection('blog', ({ data }) => !data.draft);
+
+// 生成标签统计 Map
+const tagCount = new Map<string, number>();
+for (const post of allPosts) {
+  for (const tag of post.data.tags) {
+    tagCount.set(tag, (tagCount.get(tag) || 0) + 1);
+  }
+}
+
+const tags = [...tagCount.entries()].sort((a, b) => b[1] - a[1]);
+---
+
+<BaseLayout title="标签">
+  <div class="max-w-article mx-auto px-4 py-12">
+    <h1 class="text-3xl font-bold text-[var(--color-text)] mb-8">标签</h1>
+
+    {
+      tags.length === 0 ? (
+        <p class="text-[var(--color-text-muted)]">还没有任何标签。</p>
+      ) : (
+        <div class="flex flex-wrap gap-3">
+          {tags.map(([tag, count]) => (
+            <a
+              href={`/tags/${tag}`}
+              class="inline-flex items-center gap-1.5 px-4 py-2 rounded-full
+                     bg-[var(--color-bg-secondary)] text-[var(--color-text)]
+                     hover:text-[var(--color-accent)] border border-[var(--color-border)]
+                     transition-colors text-sm"
+            >
+              <span>{tag}</span>
+              <span class="text-xs text-[var(--color-text-muted)]">{count}</span>
+            </a>
+          ))}
+        </div>
+      )
+    }
+  </div>
+</BaseLayout>

@@ -1,0 +1,62 @@
+---
+export const prerender = true;
+
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { getCollection } from 'astro:content';
+
+export async function getStaticPaths() {
+  const posts = await getCollection('blog', ({ data }) => !data.draft);
+  return posts.map((post) => ({
+    params: { slug: post.slug },
+    props: { post },
+  }));
+}
+
+const { post } = Astro.props;
+const { title, description, date, tags } = post.data;
+const { Content } = await post.render();
+
+const formattedDate = date.toLocaleDateString('zh-CN', {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+});
+---
+
+<BaseLayout title={title} description={description}>
+  <article class="max-w-article mx-auto px-4 py-12">
+    <!-- 文章头 -->
+    <header class="mb-10">
+      <h1 class="text-3xl sm:text-4xl font-bold text-[var(--color-text)] mb-4 leading-tight">
+        {title}
+      </h1>
+
+      <div class="flex flex-wrap items-center gap-3 text-sm text-[var(--color-text-muted)]">
+        <time datetime={date.toISOString()}>{formattedDate}</time>
+      </div>
+
+      {tags.length > 0 && (
+        <div class="flex flex-wrap gap-1.5 mt-4">
+          {tags.map((tag) => (
+            <TagBadge tag={tag} href={`/tags/${tag}`} />
+          ))}
+        </div>
+      )}
+    </header>
+
+    <!-- 正文 -->
+    <div class="prose prose-lg max-w-none">
+      <Content />
+    </div>
+
+    <!-- 文章尾 -->
+    <footer class="mt-12 pt-6 border-t border-[var(--color-border)]">
+      <nav class="flex justify-between text-sm">
+        <a href="/" class="text-[var(--color-accent)] hover:underline">
+          &larr; 返回首页
+        </a>
+      </nav>
+    </footer>
+  </article>
+</BaseLayout>
