@@ -9,6 +9,7 @@
     "dev": "astro dev",
     "start": "astro dev",
     "build": "astro build",
+    "postbuild": "node scripts/patch-runtime.cjs",
     "preview": "astro preview"
   },
   "dependencies": {
